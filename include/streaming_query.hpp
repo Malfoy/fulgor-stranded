@@ -8,9 +8,10 @@ namespace sshash {
 
 template <class kmer_t, bool canonical>
 struct streaming_query {
-    streaming_query(dictionary<kmer_t> const* dict)
+    streaming_query(dictionary<kmer_t> const* dict, bool check_reverse_complement = true)
 
         : m_dict(dict)
+        , m_check_reverse_complement(check_reverse_complement)
 
         , m_start(true)
         , m_kmer(constants::invalid_uint64)
@@ -89,7 +90,9 @@ struct streaming_query {
             auto expected_kmer = (m_res.kmer_orientation == constants::forward_orientation)
                                      ? (m_it.next(), m_it.get())
                                      : (m_it.next_reverse(), m_it.get_reverse());
-            if ((expected_kmer == m_kmer) or (expected_kmer == m_kmer_rc)) {
+            bool matches = (expected_kmer == m_kmer);
+            if (m_check_reverse_complement and expected_kmer == m_kmer_rc) matches = true;
+            if (matches) {
                 ++m_num_extensions;
                 m_res.kmer_id += m_res.kmer_orientation;
                 m_res.kmer_id_in_contig += m_res.kmer_orientation;
@@ -104,7 +107,8 @@ struct streaming_query {
         m_prev_minimizer_rc = m_curr_minimizer_rc;
         m_start = false;
 
-        assert(equal_lookup_result(m_dict->lookup_advanced(kmer), m_res));
+        assert(equal_lookup_result(m_dict->lookup_advanced(kmer, m_check_reverse_complement),
+                                   m_res));
         return m_res;
     }
 
@@ -116,6 +120,7 @@ struct streaming_query {
 
 private:
     dictionary<kmer_t> const* m_dict;
+    bool m_check_reverse_complement;
 
     /* result */
     lookup_result m_res;
@@ -165,7 +170,7 @@ private:
         } else {
             m_res = m_dict->lookup_uint_regular(m_kmer, m_curr_minimizer);
             bool minimizer_found = m_res.minimizer_found;
-            if (m_res.kmer_id == constants::invalid_uint64) {
+            if (m_check_reverse_complement and m_res.kmer_id == constants::invalid_uint64) {
                 assert(m_res.kmer_orientation == constants::forward_orientation);
                 m_res = m_dict->lookup_uint_regular(m_kmer_rc, m_curr_minimizer_rc);
                 m_res.kmer_orientation = constants::backward_orientation;
@@ -175,6 +180,10 @@ private:
                     m_num_negative += 1;
                     return;
                 }
+            }
+            if (m_res.kmer_id == constants::invalid_uint64) {
+                m_num_negative += 1;
+                return;
             }
         }
 

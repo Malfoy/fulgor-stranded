@@ -71,7 +71,7 @@ struct buckets  //
                          const uint64_t k, const uint64_t m, hasher_type const& hasher) const  //
     {
         auto [begin, end] = locate_bucket(bucket_id);
-        return lookup(begin, end, target_kmer, k, m, target_minimizer, hasher);
+        return lookup(begin, end, target_kmer, target_minimizer, k, m, hasher);
     }
 
     lookup_result lookup(uint64_t begin, uint64_t end, kmer_t target_kmer,                     //
