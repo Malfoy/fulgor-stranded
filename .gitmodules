@@ -1,7 +1,6 @@
 [submodule "external/sshash"]
 	path = external/sshash
 	url = https://github.com/Malfoy/fulgor-stranded.git
-	branch = submodule/sshash-stranded
 [submodule "external/sketch"]
 	path = external/sketch
 	url = https://github.com/dnbaker/sketch
