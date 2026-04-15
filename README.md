@@ -24,9 +24,12 @@ Please, cite these papers if you use Fulgor.
 * [Compiling the code](#compiling-the-code)
 * [Tools and usage](#tools-and-usage)
 * [Quick start](#quick-start)
+* [Stranded mode](#stranded-mode)
+* [Canonical vs non-canonical example](#canonical-vs-non-canonical-example)
 * [Indexing an example Salmonella Enterica pangenome](#indexing-an-example-salmonella-enterica-pangenome)
 * [Pseudoalignment output format](#pseudoalignment-output-format)
 * [Kmer conservation output format](#kmer-conservation-output-format)
+* [Query colors output format](#query-colors-output-format)
 * [Dump output format](#dump-output-format)
 
 Dependencies
@@ -101,7 +104,8 @@ Run `./fulgor help` to see a list of available tools.
     Queries:
       pseudoalign        perform pseudoalignment to an index
       kmer-conservation  print color set info for each positive kmer in query
-    
+      query-colors       print the full colors of one kmer or all kmers in a sequence
+
     Debug:
       check              perform an in-depth check to verify that an index was built correctly.
       verify             verify that index works correctly with current library version
@@ -134,6 +138,112 @@ Then, from `fulgor/build`, run
 	./fulgor build -l ../test_data/salmonella_10_filenames.txt -o ../test_data/salmonella_10 -k 31 -m 19 -d tmp_dir -g 1 -t 1 --verbose --check
 
 to build an index that will be serialized to the file `test_data/salmonella_10.fur`.
+
+
+Stranded mode
+-------------
+
+Fulgor can also build a **strand-preserving** hybrid index, where a k-mer and its reverse
+complement are kept distinct during construction.
+
+To build such an index, use `--non-canonical`:
+
+	./fulgor build -l ../test_data/salmonella_10_filenames.txt -o ../test_data/salmonella_10_stranded -k 31 -m 19 -d tmp_dir -t 1 --non-canonical
+
+This produces a standard hybrid index (`.fur`), but the underlying graph and k-mer dictionary
+do not collapse reverse complements together.
+
+#### Important limitations
+
+- Stranded mode is currently supported only for hybrid `.fur` indexes.
+- Color partitioning (`color`, `--meta`, `--diff`, `--meta --diff`) is not supported for stranded indexes.
+- The query option `--strand-specific` requires a non-canonical hybrid index and will fail on canonical indexes.
+
+#### Querying a stranded index
+
+Even on a non-canonical index, the default query behavior still accepts either the query k-mer
+or its reverse complement.
+
+To require an exact strand match, add `--strand-specific` to the query command.
+
+For pseudoalignment:
+
+	./fulgor pseudoalign -i ../test_data/salmonella_10_stranded.fur -q reads.fastq.gz -t 8 -o output.txt --strand-specific
+
+For k-mer conservation:
+
+	./fulgor kmer-conservation -i ../test_data/salmonella_10_stranded.fur -q reads.fastq.gz -t 8 -o output.txt --strand-specific
+
+For streaming per-k-mer color queries on a sequence:
+
+	./fulgor query-colors -i ../test_data/salmonella_10_stranded.fur --sequence ACTG... --strand-specific
+
+In other words:
+
+- without `--strand-specific`, a query can match through its reverse complement;
+- with `--strand-specific`, reverse-complement fallback is disabled and only the stored strand is reported.
+
+The repository also contains a minimal runnable example in `test_data/strand_demo/`; see the
+next section for the exact commands and expected outputs.
+
+
+Canonical vs non-canonical example
+----------------------------------
+
+The folder `test_data/strand_demo/` contains a tiny reference:
+
+- `ref.fa`, containing the sequence `AACGTAA`
+- `queries.fa`, containing two small query sequences
+
+First create the filenames list with an absolute path. From `fulgor/test_data/strand_demo`, run:
+
+	printf '%s\n' "$(pwd)/ref.fa" > refs.txt
+
+Then, from `fulgor/build`, build one canonical and one non-canonical index:
+
+	./fulgor build -l ../test_data/strand_demo/refs.txt -o ../test_data/strand_demo/canonical -k 5 -m 3 -d tmp_canonical -t 1
+	./fulgor build -l ../test_data/strand_demo/refs.txt -o ../test_data/strand_demo/noncanonical -k 5 -m 3 -d tmp_noncanonical -t 1 --non-canonical
+
+#### One k-mer
+
+Query the reverse complement k-mer `ACGTT`:
+
+Canonical index:
+
+	./fulgor query-colors -i ../test_data/strand_demo/canonical.fur --kmer ACGTT
+	0	ACGTT	1	0	1	0
+
+Non-canonical index, default lookup:
+
+	./fulgor query-colors -i ../test_data/strand_demo/noncanonical.fur --kmer ACGTT
+	0	ACGTT	-1	0	1	0
+
+Non-canonical index, strand-specific lookup:
+
+	./fulgor query-colors -i ../test_data/strand_demo/noncanonical.fur --kmer ACGTT --strand-specific
+	0	ACGTT	0	-1	0
+
+This is the core distinction:
+
+- canonical index: `ACGTT` is equivalent to the stored reverse-complement k-mer;
+- non-canonical index without `--strand-specific`: the reverse-complement fallback still returns a hit;
+- non-canonical index with `--strand-specific`: the same k-mer is reported as absent.
+
+#### Streaming sequence query
+
+The same distinction appears in streaming mode on the sequence `ACGTTA`:
+
+Canonical index:
+
+	./fulgor query-colors -i ../test_data/strand_demo/canonical.fur --sequence ACGTTA
+	0	ACGTT	1	0	1	0
+	1	CGTTA	0	-1	0
+
+Non-canonical index, strand-specific streaming query:
+
+	./fulgor query-colors -i ../test_data/strand_demo/noncanonical.fur --sequence ACGTTA --strand-specific
+	0	ACGTT	0	-1	0
+	1	CGTTA	0	-1	0
 
 
 Indexing an example Salmonella Enterica pangenome
@@ -259,6 +369,48 @@ where the variable `it` is the iterator and `it.size()` is the size of the color
 For example, in the second query, the triple `(12 6 3)` indicates that the 6 kmers starting at position 12 in the query all have color set id 3.
 
 
+Query colors output format
+--------------------------
+
+The tool `query-colors` prints the full color list of either:
+
+- one k-mer, using `--kmer`, or
+- every k-mer in a sequence, using `--sequence`.
+
+The output is written to stdout by default, or to a file with `-o [output-filename]`.
+
+With `--sequence`, the tool uses the streaming lookup path, so consecutive k-mers in the same
+query are processed as a stream rather than as unrelated standalone lookups.
+
+Each output line is formatted as follows:
+
+	[position][TAB][kmer][TAB][orientation][TAB][color-set-id][TAB][list-length][TAB][list]
+
+where:
+
+- `position` is the k-mer start position in the query sequence (`0` for `--kmer`);
+- `orientation` is `1` for a forward hit, `-1` for a reverse-complement hit, and `0` if the k-mer is not found;
+- `color-set-id` is `-1` if the k-mer is not found;
+- `[list]` is the TAB-separated list of color identifiers in that color set.
+
+When `--strand-specific` is specified on a non-canonical hybrid index, reverse-complement fallback
+is disabled in both single-k-mer and streaming sequence mode.
+
+#### Example
+
+	./fulgor query-colors -i index.fur --kmer AACGT
+	0	AACGT	1	0	1	0
+
+	./fulgor query-colors -i index.fur --sequence ACGTTA
+	0	ACGTT	-1	0	1	0
+	1	CGTTA	0	-1	0
+
+	./fulgor query-colors -i index.fur --sequence AACGTAA --strand-specific
+	0	AACGT	1	0	1	0
+	1	ACGTA	1	0	1	0
+	2	CGTAA	1	0	1	0
+
+
 Dump output format
 ------------------
 
@@ -321,4 +473,3 @@ Example:
 	color_set_id=1 size=49 163 440 454 635 667 684 998 1703 1730 1735 1760 1812 1814 1815 1817 1819 1834 1842 1874 1881 2011 2036 2047 2185 2245 2301 2321 2356 2669 2687 2788 2897 2960 2961 2965 3057 3163 3461 3519 3805 3806 3960 3967 3976 4105 4119 4159 4183 4385
 	color_set_id=2 size=3 1384 1693 3645
 	(...)
-

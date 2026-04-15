@@ -11,7 +11,7 @@ int kmer_conservation(FulgorIndex const& index,
                       fastx_parser::FastxParser<fastx_parser::ReadSeq>& rparser,
                       std::atomic<uint64_t>& num_reads, std::atomic<uint64_t>& num_processed_reads,
                       std::ofstream& out_file, std::mutex& iomut, std::mutex& ofile_mut,
-                      const bool verbose)  //
+                      const bool verbose, const bool strand_specific)  //
 {
     std::vector<kmer_conservation_triple> kmer_conservation_info;
     std::stringstream ss;
@@ -26,7 +26,7 @@ int kmer_conservation(FulgorIndex const& index,
                 std::cout << "sequence is too long (>= 2^32): skipping" << std::endl;
                 iomut.unlock();
             }
-            index.kmer_conservation(record.seq, kmer_conservation_info);
+            index.kmer_conservation(record.seq, kmer_conservation_info, strand_specific);
             buff_size += 1;
             if (!kmer_conservation_info.empty()) {
                 num_processed_reads += 1;
@@ -73,11 +73,17 @@ int kmer_conservation(FulgorIndex const& index,
 template <typename FulgorIndex>
 int kmer_conservation(std::string const& index_filename, std::string const& query_filename,
                       std::string const& output_filename, const uint64_t num_threads,
-                      const bool verbose) {
+                      const bool verbose, const bool strand_specific) {
     FulgorIndex index;
     if (verbose) essentials::logger("loading index from disk...");
     essentials::load(index, index_filename.c_str());
     if (verbose) essentials::logger("DONE");
+
+    if (strand_specific && index.get_k2u().canonical()) {
+        std::cerr << "Error: --strand-specific requires a non-canonical hybrid index."
+                  << std::endl;
+        return 1;
+    }
 
     std::ifstream is(query_filename.c_str());
     if (!is.good()) {
@@ -112,9 +118,10 @@ int kmer_conservation(std::string const& index_filename, std::string const& quer
 
     for (uint64_t i = 1; i != num_threads; ++i) {
         workers.push_back(std::thread([&index, &rparser, &num_reads, &num_processed_reads,
-                                       &out_file, &iomut, &ofile_mut, verbose]() {
+                                       &out_file, &iomut, &ofile_mut, verbose,
+                                       strand_specific]() {
             kmer_conservation(index, rparser, num_reads, num_processed_reads, out_file, iomut,
-                              ofile_mut, verbose);
+                              ofile_mut, verbose, strand_specific);
         }));
     }
 
@@ -149,6 +156,9 @@ int kmer_conservation(int argc, char** argv) {
     parser.add("num_threads", "Number of threads (default is 1).", "-t", false);
     parser.add("verbose", "Verbose output during query (default is false).", "--verbose", false,
                true);
+    parser.add("strand_specific",
+               "Disable reverse-complement fallback. Requires a non-canonical hybrid index.",
+               "--strand-specific", false, true);
     if (!parser.parse()) return 1;
 
     auto index_filename = parser.get<std::string>("index_filename");
@@ -165,20 +175,21 @@ int kmer_conservation(int argc, char** argv) {
     }
 
     bool verbose = parser.get<bool>("verbose");
+    bool strand_specific = parser.get<bool>("strand_specific");
     if (verbose) util::print_cmd(argc, argv);
 
     if (sshash::util::ends_with(index_filename, constants::mdfur_filename_extension)) {
         return kmer_conservation<mdfur_index_t>(index_filename, query_filename, output_filename,
-                                                num_threads, verbose);
+                                                num_threads, verbose, strand_specific);
     } else if (sshash::util::ends_with(index_filename, constants::mfur_filename_extension)) {
         return kmer_conservation<mfur_index_t>(index_filename, query_filename, output_filename,
-                                               num_threads, verbose);
+                                               num_threads, verbose, strand_specific);
     } else if (sshash::util::ends_with(index_filename, constants::dfur_filename_extension)) {
         return kmer_conservation<dfur_index_t>(index_filename, query_filename, output_filename,
-                                               num_threads, verbose);
+                                               num_threads, verbose, strand_specific);
     } else if (sshash::util::ends_with(index_filename, constants::hfur_filename_extension)) {
         return kmer_conservation<hfur_index_t>(index_filename, query_filename, output_filename,
-                                               num_threads, verbose);
+                                               num_threads, verbose, strand_specific);
     }
 
     std::cerr << "Wrong index filename supplied." << std::endl;

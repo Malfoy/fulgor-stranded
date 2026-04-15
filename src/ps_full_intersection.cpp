@@ -333,21 +333,50 @@ void meta_intersect(std::vector<Iterator>& iterators, std::vector<uint32_t>& col
 
 template <typename ColorSets>
 void index<ColorSets>::fetch_color_set_ids(std::string const& sequence,
-                                           std::vector<uint32_t>& color_set_ids) const {
+                                           std::vector<uint32_t>& color_set_ids,
+                                           bool strand_specific) const {
     if (sequence.length() < m_k2u.k()) return;
     std::vector<uint64_t> unitig_ids;
 
     { /* stream through */
-        sshash::streaming_query<kmer_type, true> query(&m_k2u);
-        query.reset();
         const uint64_t num_kmers = sequence.length() - m_k2u.k() + 1;
-        for (uint64_t i = 0, prev_unitig_id = -1; i != num_kmers; ++i) {
-            char const* kmer = sequence.data() + i;
-            auto answer = query.lookup_advanced(kmer);
-            if (answer.kmer_id != sshash::constants::invalid_uint64) {  // kmer is positive
-                if (answer.contig_id != prev_unitig_id) {
-                    unitig_ids.push_back(answer.contig_id);
-                    prev_unitig_id = answer.contig_id;
+        if (m_k2u.canonical()) {
+            sshash::streaming_query<kmer_type, true> query(&m_k2u);
+            query.reset();
+            for (uint64_t i = 0, prev_unitig_id = -1; i != num_kmers; ++i) {
+                char const* kmer = sequence.data() + i;
+                auto answer = query.lookup_advanced(kmer);
+                if (answer.kmer_id != sshash::constants::invalid_uint64) {  // kmer is positive
+                    if (answer.contig_id != prev_unitig_id) {
+                        unitig_ids.push_back(answer.contig_id);
+                        prev_unitig_id = answer.contig_id;
+                    }
+                }
+            }
+        } else if (strand_specific) {
+            sshash::streaming_query<kmer_type, false> query(&m_k2u, false);
+            query.reset();
+            for (uint64_t i = 0, prev_unitig_id = -1; i != num_kmers; ++i) {
+                char const* kmer = sequence.data() + i;
+                auto answer = query.lookup_advanced(kmer);
+                if (answer.kmer_id != sshash::constants::invalid_uint64) {  // kmer is positive
+                    if (answer.contig_id != prev_unitig_id) {
+                        unitig_ids.push_back(answer.contig_id);
+                        prev_unitig_id = answer.contig_id;
+                    }
+                }
+            }
+        } else {
+            sshash::streaming_query<kmer_type, false> query(&m_k2u);
+            query.reset();
+            for (uint64_t i = 0, prev_unitig_id = -1; i != num_kmers; ++i) {
+                char const* kmer = sequence.data() + i;
+                auto answer = query.lookup_advanced(kmer);
+                if (answer.kmer_id != sshash::constants::invalid_uint64) {  // kmer is positive
+                    if (answer.contig_id != prev_unitig_id) {
+                        unitig_ids.push_back(answer.contig_id);
+                        prev_unitig_id = answer.contig_id;
+                    }
                 }
             }
         }

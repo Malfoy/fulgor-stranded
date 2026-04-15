@@ -244,8 +244,11 @@ protected:
 
 template <typename FulgorIndex>
 struct fastq_query_reader {
-    fastq_query_reader(std::string& query_filename, uint64_t num_threads, FulgorIndex& index)
-        : rparser({query_filename}, num_threads, num_threads - 1), index(index) {
+    fastq_query_reader(std::string& query_filename, uint64_t num_threads, FulgorIndex& index,
+                       bool strand_specific)
+        : rparser({query_filename}, num_threads, num_threads - 1)
+        , index(index)
+        , strand_specific(strand_specific) {
         rparser.start();
     }
 
@@ -275,7 +278,7 @@ struct fastq_query_reader {
         void value(query_t& query) {
             query.id = curr_read_id;
             query.cids.clear();
-            qb->index.fetch_color_set_ids(curr_record->seq, query.cids);
+            qb->index.fetch_color_set_ids(curr_record->seq, query.cids, qb->strand_specific);
             query.seq = curr_record->seq;
         }
 
@@ -302,6 +305,7 @@ struct fastq_query_reader {
 private:
     fastx_parser::FastxParser<fastx_parser::ReadSeq> rparser;
     FulgorIndex& index;
+    bool strand_specific;
 };
 
 struct preprocessed_query_reader {
@@ -416,10 +420,11 @@ private:
 
 struct ps_options {
     explicit ps_options(const pseudoalignment_algorithm algo, const bool verbose,
-                        const uint64_t num_threads)
+                        const uint64_t num_threads, const bool strand_specific)
         : verbose(verbose)
         , algo(algo)
         , num_threads(num_threads)
+        , strand_specific(strand_specific)
         , num_reads(0)
         , num_mapped_reads(0) {}
 
@@ -437,6 +442,7 @@ struct ps_options {
     const bool verbose;
     const pseudoalignment_algorithm algo;
     const uint64_t num_threads;
+    const bool strand_specific;
     std::mutex io_mut;
     std::atomic<uint64_t> num_reads;
     std::atomic<uint64_t> num_mapped_reads;

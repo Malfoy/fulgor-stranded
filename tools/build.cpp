@@ -153,6 +153,9 @@ int build(int argc, char** argv) {
     parser.add("verbose", "Verbose output during construction.", "--verbose", false, true);
     parser.add("check", "Check correctness after index construction (it might take some time).",
                "--check", false, true);
+    parser.add("non_canonical",
+               "Build a non-canonical hybrid index. Meta/diff coloring is not supported.",
+               "--non-canonical", false, true);
     parser.add("force", "Re-build the index even when an index with the same name is found.",
                "--force", false, true);
     parser.add("meta", "Build a meta-colored index.", "--meta", false, true);
@@ -169,6 +172,7 @@ int build(int argc, char** argv) {
     bool force = parser.get<bool>("force");
     build_config.meta_colored = parser.get<bool>("meta");
     build_config.diff_colored = parser.get<bool>("diff");
+    build_config.canonical = !parser.get<bool>("non_canonical");
 
     if (parser.parsed("tmp_dirname")) {
         build_config.tmp_dirname = parser.get<std::string>("tmp_dirname");
@@ -210,6 +214,12 @@ int build(int argc, char** argv) {
     build_config.verbose = parser.get<bool>("verbose");
     build_config.check = parser.get<bool>("check");
     build_config.filenames_list = parser.get<std::string>("filenames_list");
+    if (!build_config.canonical && (build_config.meta_colored || build_config.diff_colored)) {
+        std::cerr << "Error: --non-canonical is only supported for hybrid .fur indexes."
+                  << std::endl;
+        return 1;
+    }
+
     if (parser.get<uint64_t>("RAM")) {
         build_config.ram_limit_in_GiB = parser.get<uint64_t>("RAM");
     }
@@ -287,6 +297,13 @@ int color(int argc, char** argv) {
     build_config.diff_colored = parser.get<bool>("diff");
     build_config.verbose = parser.get<bool>("verbose");
     bool force = parser.get<bool>("force");
+
+    hfur_index_t index;
+    essentials::load(index, build_config.index_filename_to_partition.c_str());
+    if (!index.get_k2u().canonical()) {
+        std::cerr << "Error: color partitioning requires a canonical hybrid index." << std::endl;
+        return 1;
+    }
 
     if (build_config.meta_colored and build_config.diff_colored) {
         meta_diff_color(build_config, force);

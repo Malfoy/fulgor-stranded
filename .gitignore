@@ -1,6 +1,11 @@
 .DS_Store
 build
 debug_build
-test_data
+test_data/*
+!test_data/salmonella_10/
+!test_data/salmonella_10/**
+!test_data/strand_demo/
+!test_data/strand_demo/ref.fa
+!test_data/strand_demo/queries.fa
 .idea
 *.swp

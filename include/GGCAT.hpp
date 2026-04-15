@@ -66,7 +66,7 @@ struct GGCAT {
             return;
         }
 
-        constexpr bool forward_only = false;
+        const bool forward_only = !build_config.canonical;
         constexpr bool output_color_sets = true;
         constexpr size_t min_multiplicity = 1;
         m_instance->build_graph_from_files(

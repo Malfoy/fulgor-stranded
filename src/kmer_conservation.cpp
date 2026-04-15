@@ -6,15 +6,14 @@ namespace fulgor {
 template <typename ColorSets>
 void index<ColorSets>::kmer_conservation(
     std::string const& sequence,
-    std::vector<kmer_conservation_triple>& kmer_conservation_info) const  //
+    std::vector<kmer_conservation_triple>& kmer_conservation_info,
+    bool strand_specific) const  //
 {
     constexpr uint64_t invalid = uint64_t(-1);
 
     if (sequence.length() < m_k2u.k()) return;
 
     kmer_conservation_info.clear();
-    sshash::streaming_query<kmer_type, true> query(&m_k2u);
-    query.reset();
     const uint64_t num_kmers = sequence.length() - m_k2u.k() + 1;
     kmer_conservation_triple kct = {0, 0, 0};
     uint64_t prev_color_set_id = invalid;
@@ -27,26 +26,39 @@ void index<ColorSets>::kmer_conservation(
         }
     };
 
-    for (uint64_t i = 0; i != num_kmers; ++i) {
-        char const* kmer = sequence.data() + i;
-        auto answer = query.lookup_advanced(kmer);
+    auto consume = [&](auto& query) {
+        query.reset();
+        for (uint64_t i = 0; i != num_kmers; ++i) {
+            char const* kmer = sequence.data() + i;
+            auto answer = query.lookup_advanced(kmer);
 
-        if (answer.kmer_id != sshash::constants::invalid_uint64) {  // kmer is positive
+            if (answer.kmer_id != sshash::constants::invalid_uint64) {  // kmer is positive
+                uint64_t color_set_id = u2c(answer.contig_id);
+                if (prev_color_set_id != color_set_id) {
+                    push_triple();
+                    kct.num_kmers = 0;
+                    kct.start_pos_in_query = i;
+                }
 
-            uint64_t color_set_id = u2c(answer.contig_id);
-            if (prev_color_set_id != color_set_id) {
+                kct.num_kmers += 1;
+                prev_color_set_id = color_set_id;
+
+            } else {  // kmer is negative
                 push_triple();
-                kct.num_kmers = 0;
-                kct.start_pos_in_query = i;
+                prev_color_set_id = invalid;
             }
-
-            kct.num_kmers += 1;
-            prev_color_set_id = color_set_id;
-
-        } else {  // kmer is negative
-            push_triple();
-            prev_color_set_id = invalid;
         }
+    };
+
+    if (m_k2u.canonical()) {
+        sshash::streaming_query<kmer_type, true> query(&m_k2u);
+        consume(query);
+    } else if (strand_specific) {
+        sshash::streaming_query<kmer_type, false> query(&m_k2u, false);
+        consume(query);
+    } else {
+        sshash::streaming_query<kmer_type, false> query(&m_k2u);
+        consume(query);
     }
 
     // push last one if we have to

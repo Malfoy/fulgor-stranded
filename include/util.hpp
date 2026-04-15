@@ -40,6 +40,7 @@ struct build_configuration {
     build_configuration()
         : k(31)
         , m(20)
+        , canonical(true)
         , num_threads(1)
         , ram_limit_in_GiB(constants::default_ram_limit_in_GiB)
         , num_colors(0)
@@ -54,6 +55,7 @@ struct build_configuration {
 
     uint32_t k;            // kmer length
     uint32_t m;            // minimizer length
+    bool canonical;        // canonical k-mers in the underlying SSHash dictionary
     uint32_t num_threads;  // for building and checking correctness
     uint32_t ram_limit_in_GiB;
     uint64_t num_colors;

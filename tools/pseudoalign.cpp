@@ -29,7 +29,8 @@ int pseudoalign_worker(FulgorIndex const& index, QueryReader& query_reader, Form
                     index.pseudoalign_full_intersection(query.cids, colors, tmp);
                     break;
                 case pseudoalignment_algorithm::THRESHOLD_UNION:
-                    index.pseudoalign_threshold_union(query.seq, colors, threshold);
+                    index.pseudoalign_threshold_union(query.seq, colors, threshold,
+                                                     options.strand_specific);
                     break;
                 default:
                     break;
@@ -119,7 +120,7 @@ void fetch_and_deduplicate_sets(const std::string& query_filename, Formatter& ou
             uint32_t read_id = rg.chunk_frag_offset().frag_idx;
 
             for (auto const& record : rg) {
-                index.fetch_color_set_ids(record.seq, color_set_ids);
+                index.fetch_color_set_ids(record.seq, color_set_ids, options.strand_specific);
 
                 buff_size += 1;
 
@@ -250,6 +251,9 @@ int pseudoalign(int argc, char** argv) {
         "Removes duplicate queries before pseudoalignment (default is false)."
         " Only works on Full-Intersection. Creates a temporary file in the executable's directory.",
         "--deduplicate", false, true);
+    parser.add("strand_specific",
+               "Disable reverse-complement fallback. Requires a non-canonical hybrid index.",
+               "--strand-specific", false, true);
     parser.add("format",
                "Format of the output file. Must either ascii, binary, compressed"
                " (default is ascii).",
@@ -261,6 +265,7 @@ int pseudoalign(int argc, char** argv) {
     auto output_filename = parser.get<std::string>("output_filename");
 
     bool deduplicate = parser.get<bool>("deduplicate");
+    bool strand_specific = parser.get<bool>("strand_specific");
     auto output_format = parser.parsed("format") ? parser.get<std::string>("format") : "ascii";
 
     uint64_t num_threads = 1;
@@ -324,7 +329,7 @@ int pseudoalign(int argc, char** argv) {
     }
 
     std::string tmp_filename = "queries.tmp";
-    ps_options options(ps_alg, verbose, num_threads);
+    ps_options options(ps_alg, verbose, num_threads, strand_specific);
 
     if (verbose) {
         std::cout << "\n---------------------------------" << std::endl;
@@ -333,15 +338,27 @@ int pseudoalign(int argc, char** argv) {
         std::cout << "[Output]    " << output_filename << std::endl;
         std::cout << "[Algorithm] " << to_string(ps_alg, threshold)
                   << (deduplicate ? "(dedup.)" : "") << std::endl;
+        std::cout << "[Strand]    "
+                  << (strand_specific ? "specific" : "query or reverse-complement") << std::endl;
         std::cout << "---------------------------------\n" << std::endl;
     }
 
+    bool invalid_configuration = false;
     std::visit(
         [&index_filename, &query_filename, &output_filename, &tmp_filename, deduplicate,
-         num_threads, threshold, verbose, &options](auto&& index, auto&& formatter) {
+         num_threads, threshold, verbose, strand_specific, &options,
+         &invalid_configuration](auto&& index, auto&& formatter) {
             if (verbose) essentials::logger("*** START: loading the index");
             essentials::load(index, index_filename.c_str());
             if (verbose) essentials::logger("*** DONE: loading the index");
+
+            if (strand_specific && index.get_k2u().canonical()) {
+                std::cerr
+                    << "Error: --strand-specific requires a non-canonical hybrid index."
+                    << std::endl;
+                invalid_configuration = true;
+                return;
+            }
 
             if (verbose)
                 essentials::logger("performing queries from file '" + query_filename + "'...");
@@ -359,12 +376,15 @@ int pseudoalign(int argc, char** argv) {
                     preprocessed_query_reader query_reader(tmp_filename, num_threads);
                     pseudoalign_orchestrator(index, query_reader, formatter, threshold, options);
                 } else {
-                    fastq_query_reader query_reader(query_filename, num_threads, index);
+                    fastq_query_reader query_reader(query_filename, num_threads, index,
+                                                   strand_specific);
                     pseudoalign_orchestrator(index, query_reader, formatter, threshold, options);
                 }
             }
         },
         index, formatter);
+
+    if (invalid_configuration) { return 1; }
 
     std::remove(tmp_filename.c_str());
 
