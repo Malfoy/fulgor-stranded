@@ -1,5 +1,5 @@
-[![Build](https://github.com/jermp/fulgor/actions/workflows/build.yml/badge.svg)](https://github.com/jermp/fulgor/actions/workflows/build.yml)
-[![CodeQL](https://github.com/jermp/fulgor/actions/workflows/codeql.yml/badge.svg)](https://github.com/jermp/fulgor/actions/workflows/codeql.yml)
+[![Build](https://github.com/Malfoy/fulgor-stranded/actions/workflows/build.yml/badge.svg)](https://github.com/Malfoy/fulgor-stranded/actions/workflows/build.yml)
+[![CodeQL](https://github.com/Malfoy/fulgor-stranded/actions/workflows/codeql.yml/badge.svg)](https://github.com/Malfoy/fulgor-stranded/actions/workflows/codeql.yml)
 [![install with bioconda](https://img.shields.io/badge/Install%20with-bioconda-brightgreen.svg?style=flat&logo=anaconda&logoColor=lightgray&labelColor=rgb(40,47,56)&color=rgb(68,190,80))](http://bioconda.github.io/recipes/fulgor/README.html)
 
 <picture>
@@ -8,6 +8,10 @@
 </picture>
 
 **Fulgor** is a *colored de Bruijn graph* index for large-scale matching and color queries, powered by [SSHash](https://github.com/jermp/sshash) and [GGCAT](https://github.com/algbio/GGCAT).
+
+> **EXPERIMENTAL FORK**
+>
+> This repository is an experimental fork of Fulgor focused on strand-preserving and non-canonical indexing/querying. Interfaces, behavior, and on-disk compatibility may change.
 
 The Fulgor index is described in the following papers.
 
@@ -61,9 +65,9 @@ Compiling the code
 The code is tested on Linux with `gcc` and on MacOS with `clang`.
 To build the code, [`CMake`](https://cmake.org/) is required.
 
-First clone the repository with
+First clone this fork with
 
-    git clone https://github.com/jermp/fulgor.git
+    git clone https://github.com/Malfoy/fulgor-stranded.git
 
 and then do
 
@@ -71,7 +75,7 @@ and then do
 
 to pull all necessary submodules before compilation.
 
-To compile the code for a release environment (see file `CMakeLists.txt` for the used compilation flags), it is sufficient to do the following, within the parent `fulgor` directory:
+To compile the code for a release environment (see file `CMakeLists.txt` for the used compilation flags), it is sufficient to do the following, within the repository directory:
 
     mkdir build
     cd build
@@ -129,11 +133,11 @@ in the folder `test_data/salmonella_10` with Fulgor.
 We will use the standard value k = 31.
 
 First create a list of filenames (with absolute paths) for the files in `test_data/salmonella_10`.
-From `fulgor/test_data`, do
+From `<repo>/test_data`, do
 
 	find $(pwd)/salmonella_10/* > salmonella_10_filenames.txt
 
-Then, from `fulgor/build`, run
+Then, from `<repo>/build`, run
 
 	./fulgor build -l ../test_data/salmonella_10_filenames.txt -o ../test_data/salmonella_10 -k 31 -m 19 -d tmp_dir -g 1 -t 1 --verbose --check
 
@@ -195,11 +199,11 @@ The folder `test_data/strand_demo/` contains a tiny reference:
 - `ref.fa`, containing the sequence `AACGTAA`
 - `queries.fa`, containing two small query sequences
 
-First create the filenames list with an absolute path. From `fulgor/test_data/strand_demo`, run:
+First create the filenames list with an absolute path. From `<repo>/test_data/strand_demo`, run:
 
 	printf '%s\n' "$(pwd)/ref.fa" > refs.txt
 
-Then, from `fulgor/build`, build one canonical and one non-canonical index:
+Then, from `<repo>/build`, build one canonical and one non-canonical index:
 
 	./fulgor build -l ../test_data/strand_demo/refs.txt -o ../test_data/strand_demo/canonical -k 5 -m 3 -d tmp_canonical -t 1
 	./fulgor build -l ../test_data/strand_demo/refs.txt -o ../test_data/strand_demo/noncanonical -k 5 -m 3 -d tmp_noncanonical -t 1 --non-canonical
@@ -261,7 +265,7 @@ After download, create a list of all `.fasta` filenames with
 
 	find $(pwd)/Salmonella_enterica/Genomes/*.fasta > salmonella_4546_filenames.txt
 
-and, from `fulgor/build`, run
+and, from `<repo>/build`, run
 
 	./fulgor build -l ~/salmonella_4546_filenames.txt -o ~/Salmonella_enterica/salmonella_4546 -k 31 -m 20 -d tmp_dir -g 8 -t 8 --verbose --check
 
